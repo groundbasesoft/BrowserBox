@@ -1,4 +1,5 @@
 $Outer={
+try {
 Add-Type @"
   using System;
   using System.Runtime.InteropServices;
@@ -10,6 +11,13 @@ Add-Type @"
 "@
 	$hwnd = (Get-Process -Id $pid).MainWindowHandle
 	[WinApi]::SetWindowPos($hwnd, [IntPtr]::new(-1), 0, 0, 0, 0, 0x0003)
+}
+catch {
+  Write-Host "An error occurred: $_"
+}
+finally {
+  Write-Host "Continuing..."
+}
 
 # Main script flow
 $Main={
@@ -19,10 +27,15 @@ $Main={
   EnsureRunningAsAdministrator
 
   # Call the function to show user agreement dialog
-  $dialogResult = Show-UserAgreementDialog
-  if ($dialogResult -ne [System.Windows.Forms.DialogResult]::Yes) {
-    Write-Host 'You must agree to the terms and conditions to proceed.'
-    Exit
+  try {
+    $dialogResult = Show-UserAgreementDialog
+    if ($dialogResult -ne [System.Windows.Forms.DialogResult]::Yes) {
+      Write-Host 'You must agree to the terms and conditions to proceed.'
+      Exit
+    }
+  } 
+  catch {
+    Read-Host "Do you agree to the terms?"
   }
 
   $currentVersion = CheckWingetVersion
@@ -50,23 +63,31 @@ $Main={
 
   function EnsureRunningAsAdministrator {
     # Check if the script is running as an Administrator
-    if (-NOT ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole] "Administrator")) {
-      Write-Host "Not currently Administrator. Upgrading privileges..."
-      # Get the current script path
-      $scriptPath = $($MyInvocation.ScriptName)
+    try {
+      if (-NOT ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole] "Administrator")) {
+        Write-Host "Not currently Administrator. Upgrading privileges..."
+        # Get the current script path
+        $scriptPath = $($MyInvocation.ScriptName)
 
-      # Relaunch the script with administrative rights using the current PowerShell version
-      $psExecutable = Join-Path -Path $PSHOME -ChildPath "powershell.exe"
-      if ($PSVersionTable.PSVersion.Major -ge 6) {
-          $psExecutable = Join-Path -Path $PSHOME -ChildPath "pwsh.exe"
+        # Relaunch the script with administrative rights using the current PowerShell version
+        $psExecutable = Join-Path -Path $PSHOME -ChildPath "powershell.exe"
+        if ($PSVersionTable.PSVersion.Major -ge 6) {
+            $psExecutable = Join-Path -Path $PSHOME -ChildPath "pwsh.exe"
+        }
+
+        $arguments = "-NoProfile -ExecutionPolicy Bypass -File `"$scriptPath`""
+
+        $process = (Start-Process $psExecutable -Verb RunAs -ArgumentList $arguments -PassThru)
+        #$process.WaitForExit()
+
+        Exit
       }
-
-      $arguments = "-NoProfile -ExecutionPolicy Bypass -File `"$scriptPath`""
-
-      $process = (Start-Process $psExecutable -Verb RunAs -ArgumentList $arguments -PassThru)
-      #$process.WaitForExit()
-
-      Exit
+    }
+    catch {
+      Write-Host "An error occurred: $_"
+    }
+    finally {
+      Write-Host "Continuing..."
     }
   }
 
